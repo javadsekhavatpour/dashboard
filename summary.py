@@ -649,7 +649,11 @@ for symbol in all_symbols:
             with st.spinner(f"در حال دریافت داده زنده {symbol}..."):
                 result, error = live_update_symbol(symbol)
             if result:
-                st.session_state[live_key] = result
+                # ذخیره داده زنده در یک لیست برای نمایش چند سطر
+                live_list_key = f"live_list_{symbol}"
+                if live_list_key not in st.session_state:
+                    st.session_state[live_list_key] = []
+                st.session_state[live_list_key].append(result)
                 st.success(f"✅ {symbol} بروزرسانی شد — {result['date']}")
                 st.rerun()
             else:
@@ -658,12 +662,15 @@ for symbol in all_symbols:
         if st.button("📊", key=f"history_{symbol}", help=f"داشبورد {symbol}"):
             st.session_state["show_history"] = symbol
     
-    # ===== ردیف دوم: داده زنده (اگر وجود داشته باشد) =====
-    if live_data:
+    # ===== ردیف‌های بعدی: داده‌های زنده (اگر وجود داشته باشند) =====
+    live_list_key = f"live_list_{symbol}"
+    live_list = st.session_state.get(live_list_key, [])
+    
+    for live_idx, live_data in enumerate(live_list):
         cols2 = st.columns([1, 1.5, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1.5])
         
         with cols2[0]:
-            st.markdown(f"🟢 **{symbol}**")
+            st.markdown(f"🟢 **{symbol} 1**" if live_idx == 0 else f"🟢 **{symbol} {live_idx+1}**")
         with cols2[1]:
             st.markdown(f"🟢 {live_data['date']}")
         with cols2[2]:
@@ -692,8 +699,10 @@ for symbol in all_symbols:
             else:
                 st.markdown(f"⚪ {signal}")
         with cols2[11]:
-            if st.button("🗑️", key=f"clear_{symbol}", help=f"حذف داده زنده {symbol}"):
-                del st.session_state[live_key]
+            if st.button("🗑️", key=f"clear_{symbol}_{live_idx}", help=f"حذف این سطر"):
+                st.session_state[live_list_key].pop(live_idx)
+                if not st.session_state[live_list_key]:
+                    del st.session_state[live_list_key]
                 st.rerun()
         with cols2[12]:
             st.markdown("")
