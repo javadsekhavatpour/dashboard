@@ -7,13 +7,19 @@
 این اسکریپت تمام فایل‌های *_dashboard.xlsx در پوشه dashboard/ را می‌خواند
 و فقط آخرین سطر (جدیدترین روز) هر نماد را نمایش می‌دهد.
 
+همچنین برای هر نماد دو دکمه دارد:
+  🔄 بروزرسانی: دریافت داده‌های جدید از TSETMC و بازسازی داشبورد
+  📊 تاریخچه: نمایش داشبورد کامل تاریخی نماد
+
 روش اجرا:
   streamlit run summary.py
 """
 
 import streamlit as st
 import os
+import sys
 import glob
+import subprocess
 from datetime import datetime
 
 st.set_page_config(page_title="خلاصه نمادها", page_icon="📊", layout="wide")
@@ -44,12 +50,6 @@ def read_latest_from_dashboard(dashboard_file):
     
     ws = wb["داشبورد"]
     
-    # ردیف ۳ = جدیدترین روز (ردیف ۱ عنوان، ردیف ۲ هدر)
-    # ستون‌ها (مطابق make_dashboard.py):
-    # B=تاریخ, C=امتیاز جریان پول, D=امتیاز حجم, E=امتیاز قدرت خریدار,
-    # F=امتیاز واکنش قیمت, G=امتیاز تداوم, H=امتیاز کل, I=شدت,
-    # J=٪ قیمت پایانی (R_c), K=سیگنال
-    
     data = {
         "date": ws.cell(row=3, column=2).value or "—",
         "score_mf": ws.cell(row=3, column=3).value,
@@ -63,7 +63,7 @@ def read_latest_from_dashboard(dashboard_file):
         "signal": ws.cell(row=3, column=11).value or "—",
     }
     
-    # پاکسازی مقادیر (حذف ● و تبدیل به عدد)
+    # پاکسازی مقادیر
     for key in ["score_mf", "score_vol", "score_bp", "score_price", "score_pers", "total_score"]:
         val = data[key]
         if val is not None:
@@ -77,7 +77,6 @@ def read_latest_from_dashboard(dashboard_file):
         else:
             data[key] = 0
     
-    # پاکسازی R_c
     rc_val = data["rc"]
     if rc_val is not None:
         if isinstance(rc_val, str):
@@ -91,6 +90,106 @@ def read_latest_from_dashboard(dashboard_file):
         data["rc"] = 0.0
     
     return data
+
+# ============================================================
+# بروزرسانی نماد
+# ============================================================
+def update_symbol(symbol):
+    """بروزرسانی فایل input و بازسازی داشبورد برای یک نماد"""
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    
+    # ۱. آپدیت فایل input
+    update_script = os.path.join(script_dir, "update_input.py")
+    input_file = os.path.join("input", f"{symbol}_input.xlsx")
+    
+    if os.path.exists(input_file):
+        # فایل موجود است، آپدیت کن
+        cmd = [sys.executable, update_script, "--symbol", symbol, "--update"]
+    else:
+        # فایل موجود نیست، ایجاد کن
+        cmd = [sys.executable, update_script, "--symbol", symbol, "--create"]
+    
+    try:
+        result = subprocess.run(cmd, capture_output=True, text=True, timeout=120, cwd=script_dir)
+        if result.returncode != 0:
+            return False, result.stderr[-500:] if result.stderr else "Unknown error"
+    except Exception as e:
+        return False, str(e)
+    
+    # ۲. بازسازی داشبورد
+    dash_script = os.path.join(script_dir, "make_dashboard.py")
+    dash_dir = os.path.join(script_dir, "dashboard")
+    os.makedirs(dash_dir, exist_ok=True)
+    dash_file = os.path.join(dash_dir, f"{symbol}_dashboard.xlsx")
+    
+    try:
+        result = subprocess.run(
+            [sys.executable, dash_script, input_file, "--name", symbol, "--output", dash_file],
+            capture_output=True, text=True, timeout=120, cwd=script_dir
+        )
+        return result.returncode == 0, result.stdout[-500:] if result.returncode == 0 else result.stderr[-500:]
+    except Exception as e:
+        return False, str(e)
+
+# ============================================================
+# نمایش داشبورد تاریخی نماد
+# ============================================================
+def show_symbol_history(symbol):
+    """نمایش داشبورد کامل تاریخی یک نماد"""
+    from openpyxl import load_workbook
+    import pandas as pd
+    
+    dashboard_file = os.path.join("dashboard", f"{symbol}_dashboard.xlsx")
+    if not os.path.exists(dashboard_file):
+        dashboard_file = f"{symbol}_dashboard.xlsx"
+    
+    if not os.path.exists(dashboard_file):
+        st.warning(f"فایل {symbol}_dashboard.xlsx یافت نشد")
+        return
+    
+    try:
+        wb = load_workbook(dashboard_file, data_only=True)
+    except:
+        st.error("خطا در خواندن فایل")
+        return
+    
+    if "داشبورد" not in wb.sheetnames:
+        st.warning("شیت داشبورد یافت نشد")
+        return
+    
+    ws = wb["داشبورد"]
+    st.markdown(f"### {ws.cell(row=1, column=2).value}")
+    
+    data = []
+    for r in range(3, ws.max_row + 1):
+        d = ws.cell(row=r, column=2).value
+        if not d or d == "میانگین": continue
+        
+        def clean(val):
+            if val is None: return "—"
+            if isinstance(val, str):
+                return val.replace("●", "").replace("●", "").strip()
+            return val
+        
+        data.append({
+            "تاریخ": d,
+            "جریان پول": clean(ws.cell(row=r, column=3).value),
+            "حجم": clean(ws.cell(row=r, column=4).value),
+            "قدرت خریدار": clean(ws.cell(row=r, column=5).value),
+            "واکنش قیمت": clean(ws.cell(row=r, column=6).value),
+            "تداوم": clean(ws.cell(row=r, column=7).value),
+            "کل": clean(ws.cell(row=r, column=8).value),
+            "شدت": clean(ws.cell(row=r, column=9).value),
+            "R_c": clean(ws.cell(row=r, column=10).value),
+            "سیگنال": clean(ws.cell(row=r, column=11).value),
+        })
+    
+    if not data:
+        st.warning("داده‌ای وجود ندارد")
+        return
+    
+    df = pd.DataFrame(data)
+    st.dataframe(df, use_container_width=True, hide_index=True)
 
 # ============================================================
 # رابط کاربری
@@ -113,66 +212,164 @@ if not os.path.exists(dashboard_dir):
 else:
     dashboard_files = glob.glob(os.path.join(dashboard_dir, "*_dashboard.xlsx"))
 
-if not dashboard_files:
-    st.warning("هیچ فایل داشبورد یافت نشد. ابتدا با build_all_dashboards.bat داشبورد بسازید.")
+# همچنین فایل‌های input را هم پیدا کن (برای نمادهایی که هنوز داشبورد ندارند)
+input_dir = "input"
+if os.path.exists(input_dir):
+    input_files = glob.glob(os.path.join(input_dir, "*_input.xlsx"))
+else:
+    input_files = glob.glob("*_input.xlsx")
+
+# لیست همه نمادها (از داشبورد و input)
+all_symbols = set()
+for f in dashboard_files:
+    sym = os.path.basename(f).replace("_dashboard.xlsx", "")
+    all_symbols.add(sym)
+for f in input_files:
+    sym = os.path.basename(f).replace("_input.xlsx", "")
+    all_symbols.add(sym)
+
+all_symbols = sorted(all_symbols)
+
+if not all_symbols:
+    st.warning("هیچ نمادی یافت نشد. ابتدا فایل input ایجاد کنید.")
     st.stop()
 
-st.info(f"تعداد نمادها: {len(dashboard_files)}")
-
-# خواندن داده‌های همه نمادها
-all_data = []
-for f in sorted(dashboard_files):
-    basename = os.path.basename(f)
-    symbol = basename.replace("_dashboard.xlsx", "")
-    
-    data = read_latest_from_dashboard(f)
-    if data:
-        data["symbol"] = symbol
-        all_data.append(data)
-
-if not all_data:
-    st.error("داده‌ای قابل خواندن نبود")
-    st.stop()
+st.info(f"تعداد نمادها: {len(all_symbols)}")
 
 # ============================================================
-# جدول اصلی — دقیقاً مثل داشبورد
+# جدول اصلی با دکمه‌های عملیات
 # ============================================================
 st.markdown("## 📋 جدول خلاصه نمادها")
 
 import pandas as pd
 
-rows = []
-for d in all_data:
-    rc = d.get("rc", 0)
-    rc_str = f"{'+' if rc >= 0 else ''}{rc:.2f}"
-    
-    # رنگ سیگنال
-    signal = d.get("signal", "خنثی")
-    if signal in ["خرید قوی", "خرید"]:
-        signal_str = f"🟢 {signal}"
-    elif signal in ["فروش", "هشدار"]:
-        signal_str = f"🔴 {signal}"
-    else:
-        signal_str = f"⚪ {signal}"
-    
-    rows.append({
-        "نماد": d["symbol"],
-        "تاریخ": d["date"],
-        "امتیاز جریان پول\n(۰-۳۰)": f"● {d['score_mf']}",
-        "امتیاز حجم\n(۰-۱۵)": f"● {d['score_vol']}",
-        "امتیاز قدرت خریدار\n(۰-۲۰)": f"● {d['score_bp']}",
-        "امتیاز واکنش قیمت\n(۰-۲۵)": f"● {d['score_price']}",
-        "امتیاز تداوم\n(۰-۱۰)": f"● {d['score_pers']}",
-        "امتیاز کل\n(۰-۱۰۰)": f"● {d['total_score']}",
-        "شدت": d["intensity"],
-        "٪ قیمت پایانی\n(R_c)": f"● {rc_str}",
-        "سیگنال": signal_str,
-    })
+# هدر جدول
+cols_hdr = st.columns([1, 1.5, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1.5])
+with cols_hdr[0]: st.markdown("**نماد**")
+with cols_hdr[1]: st.markdown("**تاریخ**")
+with cols_hdr[2]: st.markdown("**جریان پول**\n(۰-۳۰)")
+with cols_hdr[3]: st.markdown("**حجم**\n(۰-۱۵)")
+with cols_hdr[4]: st.markdown("**قدرت خریدار**\n(۰-۲۰)")
+with cols_hdr[5]: st.markdown("**واکنش قیمت**\n(۰-۲۵)")
+with cols_hdr[6]: st.markdown("**تداوم**\n(۰-۱۰)")
+with cols_hdr[7]: st.markdown("**کل**\n(۰-۱۰۰)")
+with cols_hdr[8]: st.markdown("**شدت**")
+with cols_hdr[9]: st.markdown("**R_c**")
+with cols_hdr[10]: st.markdown("**سیگنال**")
+with cols_hdr[11]: st.markdown("**🔄 آپدیت**")
+with cols_hdr[12]: st.markdown("**📊 تاریخچه**")
+st.markdown("---")
 
-df = pd.DataFrame(rows)
+# ردیف‌های جدول
+for symbol in all_symbols:
+    # خواندن داده‌های داشبورد
+    dash_file = os.path.join(dashboard_dir, f"{symbol}_dashboard.xlsx")
+    if not os.path.exists(dash_file):
+        dash_file = f"{symbol}_dashboard.xlsx"
+    
+    data = None
+    if os.path.exists(dash_file):
+        data = read_latest_from_dashboard(dash_file)
+    
+    cols = st.columns([1, 1.5, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1.5])
+    
+    with cols[0]:
+        st.markdown(f"**{symbol}**")
+    
+    with cols[1]:
+        if data:
+            st.markdown(data["date"])
+        else:
+            st.markdown("—")
+    
+    with cols[2]:
+        if data:
+            st.markdown(f"● {data['score_mf']}")
+        else:
+            st.markdown("—")
+    
+    with cols[3]:
+        if data:
+            st.markdown(f"● {data['score_vol']}")
+        else:
+            st.markdown("—")
+    
+    with cols[4]:
+        if data:
+            st.markdown(f"● {data['score_bp']}")
+        else:
+            st.markdown("—")
+    
+    with cols[5]:
+        if data:
+            st.markdown(f"● {data['score_price']}")
+        else:
+            st.markdown("—")
+    
+    with cols[6]:
+        if data:
+            st.markdown(f"● {data['score_pers']}")
+        else:
+            st.markdown("—")
+    
+    with cols[7]:
+        if data:
+            st.markdown(f"● {data['total_score']}")
+        else:
+            st.markdown("—")
+    
+    with cols[8]:
+        if data:
+            st.markdown(data["intensity"])
+        else:
+            st.markdown("—")
+    
+    with cols[9]:
+        if data:
+            rc = data["rc"]
+            st.markdown(f"{'+' if rc >= 0 else ''}{rc:.2f}")
+        else:
+            st.markdown("—")
+    
+    with cols[10]:
+        if data:
+            signal = data["signal"]
+            if signal in ["خرید قوی", "خرید"]:
+                st.markdown(f"🟢 {signal}")
+            elif signal in ["فروش", "هشدار"]:
+                st.markdown(f"🔴 {signal}")
+            else:
+                st.markdown(f"⚪ {signal}")
+        else:
+            st.markdown("—")
+    
+    with cols[11]:
+        if st.button("🔄", key=f"update_{symbol}", help=f"بروزرسانی {symbol}"):
+            with st.spinner(f"در حال بروزرسانی {symbol}..."):
+                success, msg = update_symbol(symbol)
+            if success:
+                st.success(f"✅ {symbol} بروزرسانی شد")
+                st.rerun()
+            else:
+                st.error(f"❌ خطا: {msg}")
+    
+    with cols[12]:
+        if st.button("📊", key=f"history_{symbol}", help=f"داشبورد {symbol}"):
+            st.session_state["show_history"] = symbol
+    
+    st.markdown("")
 
-# نمایش جدول
-st.dataframe(df, use_container_width=True, hide_index=True)
+# ============================================================
+# نمایش داشبورد تاریخی
+# ============================================================
+if "show_history" in st.session_state and st.session_state["show_history"]:
+    symbol = st.session_state["show_history"]
+    st.markdown("---")
+    st.markdown(f"## 📊 داشبورد تاریخی {symbol}")
+    show_symbol_history(symbol)
+    if st.button("✖ بستن", key="close_history"):
+        st.session_state["show_history"] = None
+        st.rerun()
 
 # ============================================================
 # کارت‌های خلاصه
@@ -180,11 +377,28 @@ st.dataframe(df, use_container_width=True, hide_index=True)
 st.markdown("---")
 st.markdown("## 📈 خلاصه کلی")
 
+# خواندن همه داده‌ها برای محاسبه خلاصه
+all_data = []
+for symbol in all_symbols:
+    dash_file = os.path.join(dashboard_dir, f"{symbol}_dashboard.xlsx")
+    if not os.path.exists(dash_file):
+        dash_file = f"{symbol}_dashboard.xlsx"
+    if os.path.exists(dash_file):
+        data = read_latest_from_dashboard(dash_file)
+        if data:
+            data["symbol"] = symbol
+            all_data.append(data)
+
 total_symbols = len(all_data)
-total_score = sum(d["total_score"] for d in all_data)
-avg_score = total_score / total_symbols if total_symbols else 0
-buy_signals = sum(1 for d in all_data if d["signal"] in ["خرید قوی", "خرید"])
-sell_signals = sum(1 for d in all_data if d["signal"] in ["فروش", "هشدار"])
+if total_symbols > 0:
+    total_score = sum(d["total_score"] for d in all_data)
+    avg_score = total_score / total_symbols
+    buy_signals = sum(1 for d in all_data if d["signal"] in ["خرید قوی", "خرید"])
+    sell_signals = sum(1 for d in all_data if d["signal"] in ["فروش", "هشدار"])
+else:
+    avg_score = 0
+    buy_signals = 0
+    sell_signals = 0
 
 col1, col2, col3, col4 = st.columns(4)
 
