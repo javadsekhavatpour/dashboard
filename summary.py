@@ -400,14 +400,6 @@ for d in all_data:
     rc = d.get("rc", 0)
     rc_str = f"{'+' if rc >= 0 else ''}{rc:.2f}"
     
-    money_flow = d.get("money_flow", 0)
-    if money_flow > 0:
-        flow_str = f"🟢 +{money_flow:.2f}"
-    elif money_flow < 0:
-        flow_str = f"🔴 {money_flow:.2f}"
-    else:
-        flow_str = "⚪ 0.00"
-    
     # رنگ سیگنال
     signal = d.get("signal", "خنثی")
     if signal in ["خرید قوی", "خرید"]:
@@ -420,17 +412,15 @@ for d in all_data:
     rows.append({
         "نماد": d["symbol"],
         "تاریخ": d["date"],
-        "قیمت پایانی": f"{int(d['close']):,}",
-        "درصد تغییر (R_c)": f"{'+' if rc >= 0 else ''}{rc:.2f}%",
-        "امتیاز جریان پول": f"● {d['score_mf']}",
-        "امتیاز حجم": f"● {d['score_vol']}",
-        "امتیاز قدرت خریدار": f"● {d['score_bp']}",
-        "امتیاز واکنش قیمت": f"● {d['score_price']}",
-        "امتیاز تداوم": f"● {d['score_pers']}",
-        "امتیاز کل": f"● {d['total_score']}",
+        "امتیاز جریان پول\n(۰-۳۰)": f"● {d['score_mf']}",
+        "امتیاز حجم\n(۰-۱۵)": f"● {d['score_vol']}",
+        "امتیاز قدرت خریدار\n(۰-۲۰)": f"● {d['score_bp']}",
+        "امتیاز واکنش قیمت\n(۰-۲۵)": f"● {d['score_price']}",
+        "امتیاز تداوم\n(۰-۱۰)": f"● {d['score_pers']}",
+        "امتیاز کل\n(۰-۱۰۰)": f"● {d['total_score']}",
         "شدت": d["intensity"],
+        "٪ قیمت پایانی\n(R_c)": f"● {rc_str}",
         "سیگنال": signal_str,
-        "ورود/خروج پول": flow_str,
     })
 
 df = pd.DataFrame(rows)
