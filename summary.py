@@ -600,56 +600,39 @@ for symbol in all_symbols:
     if os.path.exists(dash_file):
         hist_data = read_latest_from_dashboard(dash_file)
     
-    # بررسی وجود داده زنده در session_state
-    live_list_key = f"live_list_{symbol}"
-    live_list = st.session_state.get(live_list_key, [])
-    
-    # اگر داده زنده وجود دارد، آخرین را نمایش بده
-    if live_list:
-        data = live_list[-1]  # آخرین آپدیت زنده
-        is_live = True
-    else:
-        data = hist_data
-        is_live = False
-    
+    # ===== ردیف اول: داده تاریخی =====
     cols = st.columns([1.5, 1.5, 1, 1, 1, 1, 1, 1, 1.5, 1.5, 1, 1])
     
     with cols[0]:
-        st.markdown(f"{'🟢' if is_live else ''} **{symbol}**")
+        st.markdown(f"**{symbol}**")
     with cols[1]:
-        st.markdown(data["date"] if data else "—")
+        st.markdown(hist_data["date"] if hist_data else "—")
     with cols[2]:
-        st.markdown(f"{data['score_mf']}" if data else "—")
+        st.markdown(f"{hist_data['score_mf']}" if hist_data else "—")
     with cols[3]:
-        st.markdown(f"{data['score_vol']}" if data else "—")
+        st.markdown(f"{hist_data['score_vol']}" if hist_data else "—")
     with cols[4]:
-        st.markdown(f"{data['score_bp']}" if data else "—")
+        st.markdown(f"{hist_data['score_bp']}" if hist_data else "—")
     with cols[5]:
-        st.markdown(f"{data['score_price']}" if data else "—")
+        st.markdown(f"{hist_data['score_price']}" if hist_data else "—")
     with cols[6]:
-        st.markdown(f"{data['score_pers']}" if data else "—")
+        st.markdown(f"{hist_data['score_pers']}" if hist_data else "—")
     with cols[7]:
-        st.markdown(f"{data['total_score']}" if data else "—")
+        st.markdown(f"{hist_data['total_score']}" if hist_data else "—")
     with cols[8]:
-        if data:
-            intensity = data["intensity"]
-            if intensity in ["بسیار قوی", "قوی"]:
-                st.markdown(f"● {intensity}")
-            elif intensity == "متوسط":
-                st.markdown(f"● {intensity}")
-            else:
-                st.markdown(f"● {intensity}")
+        if hist_data:
+            st.markdown(f"● {hist_data['intensity']}")
         else:
             st.markdown("—")
     with cols[9]:
-        if data:
-            rc = data["rc"]
+        if hist_data:
+            rc = hist_data["rc"]
             st.markdown(f"{'+' if rc >= 0 else ''}{rc:.2f}")
         else:
             st.markdown("—")
     with cols[10]:
-        if data:
-            signal = data["signal"]
+        if hist_data:
+            signal = hist_data["signal"]
             if signal in ["خرید قوی", "خرید"]:
                 st.markdown(f"● 🟢 {signal}")
             elif signal in ["فروش", "هشدار"]:
@@ -661,6 +644,49 @@ for symbol in all_symbols:
     with cols[11]:
         if st.button("📊", key=f"history_{symbol}", help=f"داشبورد {symbol}"):
             st.session_state["show_history"] = symbol
+    
+    # ===== ردیف‌های زنده: هر بار آپدیت یک سطر جدید =====
+    live_list_key = f"live_list_{symbol}"
+    live_list = st.session_state.get(live_list_key, [])
+    
+    for live_idx, live_data in enumerate(live_list):
+        cols2 = st.columns([1.5, 1.5, 1, 1, 1, 1, 1, 1, 1.5, 1.5, 1, 1])
+        
+        with cols2[0]:
+            st.markdown(f"🟢 **{symbol} {live_idx+1}**")
+        with cols2[1]:
+            st.markdown(f"{live_data['date']}")
+        with cols2[2]:
+            st.markdown(f"{live_data['score_mf']}")
+        with cols2[3]:
+            st.markdown(f"{live_data['score_vol']}")
+        with cols2[4]:
+            st.markdown(f"{live_data['score_bp']}")
+        with cols2[5]:
+            st.markdown(f"{live_data['score_price']}")
+        with cols2[6]:
+            st.markdown(f"{live_data['score_pers']}")
+        with cols2[7]:
+            st.markdown(f"{live_data['total_score']}")
+        with cols2[8]:
+            st.markdown(f"● {live_data['intensity']}")
+        with cols2[9]:
+            rc = live_data["rc"]
+            st.markdown(f"{'+' if rc >= 0 else ''}{rc:.2f}")
+        with cols2[10]:
+            signal = live_data["signal"]
+            if signal in ["خرید قوی", "خرید"]:
+                st.markdown(f"● 🟢 {signal}")
+            elif signal in ["فروش", "هشدار"]:
+                st.markdown(f"● 🔴 {signal}")
+            else:
+                st.markdown(f"● ⚪ {signal}")
+        with cols2[11]:
+            if st.button("🗑️", key=f"clear_{symbol}_{live_idx}", help=f"حذف سطر {live_idx+1}"):
+                st.session_state[live_list_key].pop(live_idx)
+                if not st.session_state[live_list_key]:
+                    del st.session_state[live_list_key]
+                st.rerun()
     
     st.markdown("")
 
