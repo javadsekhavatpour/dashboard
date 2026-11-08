@@ -574,7 +574,7 @@ st.markdown("## 📋 جدول خلاصه نمادها")
 import pandas as pd
 
 # هدر جدول
-cols_hdr = st.columns([1, 1.5, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1.5])
+cols_hdr = st.columns([1.5, 1.5, 1, 1, 1, 1, 1, 1, 1.5, 1.5, 1, 1])
 with cols_hdr[0]: st.markdown("**نماد**")
 with cols_hdr[1]: st.markdown("**تاریخ**")
 with cols_hdr[2]: st.markdown("**جریان پول**\n(۰-۳۰)")
@@ -586,8 +586,7 @@ with cols_hdr[7]: st.markdown("**کل**\n(۰-۱۰۰)")
 with cols_hdr[8]: st.markdown("**شدت**")
 with cols_hdr[9]: st.markdown("**R_c**")
 with cols_hdr[10]: st.markdown("**سیگنال**")
-with cols_hdr[11]: st.markdown("**🔄 آپدیت**")
-with cols_hdr[12]: st.markdown("**📊 تاریخچه**")
+with cols_hdr[11]: st.markdown("**📊 تاریخچه**")
 st.markdown("---")
 
 # ردیف‌های جدول
@@ -602,31 +601,46 @@ for symbol in all_symbols:
         hist_data = read_latest_from_dashboard(dash_file)
     
     # بررسی وجود داده زنده در session_state
-    live_key = f"live_{symbol}"
-    live_data = st.session_state.get(live_key)
+    live_list_key = f"live_list_{symbol}"
+    live_list = st.session_state.get(live_list_key, [])
     
-    # ===== ردیف اول: داده تاریخی =====
-    data = hist_data
-    cols = st.columns([1, 1.5, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1.5])
+    # اگر داده زنده وجود دارد، آخرین را نمایش بده
+    if live_list:
+        data = live_list[-1]  # آخرین آپدیت زنده
+        is_live = True
+    else:
+        data = hist_data
+        is_live = False
+    
+    cols = st.columns([1.5, 1.5, 1, 1, 1, 1, 1, 1, 1.5, 1.5, 1, 1])
     
     with cols[0]:
-        st.markdown(f"**{symbol}**")
+        st.markdown(f"{'🟢' if is_live else ''} **{symbol}**")
     with cols[1]:
         st.markdown(data["date"] if data else "—")
     with cols[2]:
-        st.markdown(f"● {data['score_mf']}" if data else "—")
+        st.markdown(f"{data['score_mf']}" if data else "—")
     with cols[3]:
-        st.markdown(f"● {data['score_vol']}" if data else "—")
+        st.markdown(f"{data['score_vol']}" if data else "—")
     with cols[4]:
-        st.markdown(f"● {data['score_bp']}" if data else "—")
+        st.markdown(f"{data['score_bp']}" if data else "—")
     with cols[5]:
-        st.markdown(f"● {data['score_price']}" if data else "—")
+        st.markdown(f"{data['score_price']}" if data else "—")
     with cols[6]:
-        st.markdown(f"● {data['score_pers']}" if data else "—")
+        st.markdown(f"{data['score_pers']}" if data else "—")
     with cols[7]:
-        st.markdown(f"● {data['total_score']}" if data else "—")
+        st.markdown(f"{data['total_score']}" if data else "—")
     with cols[8]:
-        st.markdown(data["intensity"] if data else "—")
+        if data:
+            intensity = data["intensity"]
+            if intensity in ["بسیار قوی", "قوی"]:
+                st.markdown(f"● {intensity}")
+            elif intensity == "متوسط":
+                st.markdown(f"● {intensity}")
+            else:
+                st.markdown(f"● {intensity}")
+        else:
+            st.markdown("—")
     with cols[9]:
         if data:
             rc = data["rc"]
@@ -637,77 +651,52 @@ for symbol in all_symbols:
         if data:
             signal = data["signal"]
             if signal in ["خرید قوی", "خرید"]:
-                st.markdown(f"🟢 {signal}")
+                st.markdown(f"● 🟢 {signal}")
             elif signal in ["فروش", "هشدار"]:
-                st.markdown(f"🔴 {signal}")
+                st.markdown(f"● 🔴 {signal}")
             else:
-                st.markdown(f"⚪ {signal}")
+                st.markdown(f"● ⚪ {signal}")
         else:
             st.markdown("—")
     with cols[11]:
-        if st.button("🔄", key=f"update_{symbol}", help=f"بروزرسانی زنده {symbol}"):
-            with st.spinner(f"در حال دریافت داده زنده {symbol}..."):
-                result, error = live_update_symbol(symbol)
-            if result:
-                # ذخیره داده زنده در یک لیست برای نمایش چند سطر
-                live_list_key = f"live_list_{symbol}"
-                if live_list_key not in st.session_state:
-                    st.session_state[live_list_key] = []
-                st.session_state[live_list_key].append(result)
-                st.success(f"✅ {symbol} بروزرسانی شد — {result['date']}")
-                st.rerun()
-            else:
-                st.error(f"❌ {error}")
-    with cols[12]:
         if st.button("📊", key=f"history_{symbol}", help=f"داشبورد {symbol}"):
             st.session_state["show_history"] = symbol
     
-    # ===== ردیف‌های بعدی: داده‌های زنده (اگر وجود داشته باشند) =====
-    live_list_key = f"live_list_{symbol}"
-    live_list = st.session_state.get(live_list_key, [])
-    
-    for live_idx, live_data in enumerate(live_list):
-        cols2 = st.columns([1, 1.5, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1.5])
-        
-        with cols2[0]:
-            st.markdown(f"🟢 **{symbol} 1**" if live_idx == 0 else f"🟢 **{symbol} {live_idx+1}**")
-        with cols2[1]:
-            st.markdown(f"🟢 {live_data['date']}")
-        with cols2[2]:
-            st.markdown(f"🟢 ● {live_data['score_mf']}")
-        with cols2[3]:
-            st.markdown(f"🟢 ● {live_data['score_vol']}")
-        with cols2[4]:
-            st.markdown(f"🟢 ● {live_data['score_bp']}")
-        with cols2[5]:
-            st.markdown(f"🟢 ● {live_data['score_price']}")
-        with cols2[6]:
-            st.markdown(f"🟢 ● {live_data['score_pers']}")
-        with cols2[7]:
-            st.markdown(f"🟢 ● {live_data['total_score']}")
-        with cols2[8]:
-            st.markdown(f"🟢 {live_data['intensity']}")
-        with cols2[9]:
-            rc = live_data["rc"]
-            st.markdown(f"🟢 {'+' if rc >= 0 else ''}{rc:.2f}")
-        with cols2[10]:
-            signal = live_data["signal"]
-            if signal in ["خرید قوی", "خرید"]:
-                st.markdown(f"🟢 {signal}")
-            elif signal in ["فروش", "هشدار"]:
-                st.markdown(f"🔴 {signal}")
-            else:
-                st.markdown(f"⚪ {signal}")
-        with cols2[11]:
-            if st.button("🗑️", key=f"clear_{symbol}_{live_idx}", help=f"حذف این سطر"):
-                st.session_state[live_list_key].pop(live_idx)
-                if not st.session_state[live_list_key]:
-                    del st.session_state[live_list_key]
-                st.rerun()
-        with cols2[12]:
-            st.markdown("")
-    
     st.markdown("")
+
+# ============================================================
+# دکمه بروزرسانی همه نمادها
+# ============================================================
+st.markdown("---")
+if st.button("🔄 بروزرسانی لحظه‌ای همه نمادها", type="primary", use_container_width=True):
+    progress = st.progress(0)
+    status = st.empty()
+    
+    for i, symbol in enumerate(all_symbols):
+        progress.progress(i / len(all_symbols))
+        status.text(f"در حال دریافت داده زنده {symbol} ({i+1}/{len(all_symbols)})...")
+        
+        result, error = live_update_symbol(symbol)
+        if result:
+            live_list_key = f"live_list_{symbol}"
+            if live_list_key not in st.session_state:
+                st.session_state[live_list_key] = []
+            st.session_state[live_list_key].append(result)
+        else:
+            st.warning(f"⚠️ {symbol}: {error}")
+    
+    progress.progress(1.0)
+    status.empty()
+    st.success("✅ بروزرسانی همه نمادها انجام شد")
+    st.rerun()
+
+# دکمه پاک کردن داده‌های زنده
+if st.button("🗑️ پاک کردن داده‌های لحظه‌ای"):
+    for symbol in all_symbols:
+        live_list_key = f"live_list_{symbol}"
+        if live_list_key in st.session_state:
+            del st.session_state[live_list_key]
+    st.rerun()
 
 # ============================================================
 # نمایش داشبورد تاریخی
@@ -729,9 +718,11 @@ st.markdown("## 📈 خلاصه کلی")
 
 all_data = []
 for symbol in all_symbols:
-    live_key = f"live_{symbol}"
-    if live_key in st.session_state:
-        all_data.append(st.session_state[live_key])
+    live_list_key = f"live_list_{symbol}"
+    live_list = st.session_state.get(live_list_key, [])
+    
+    if live_list:
+        all_data.append(live_list[-1])  # آخرین داده زنده
     else:
         dash_file = os.path.join(dashboard_dir, f"{symbol}_dashboard.xlsx")
         if not os.path.exists(dash_file):
