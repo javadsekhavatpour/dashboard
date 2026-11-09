@@ -567,31 +567,46 @@ if not all_symbols:
 st.info(f"تعداد نمادها: {len(all_symbols)}")
 
 # ============================================================
-# جدول اصلی با دکمه‌های عملیات
+# جدول اصلی با هدر ثابت و تب‌ها برای تاریخچه
 # ============================================================
 st.markdown("## 📋 جدول خلاصه نمادها")
 
 import pandas as pd
 
-# هدر جدول
-cols_hdr = st.columns([1.5, 1.5, 1, 1, 1, 1, 1, 1, 1.5, 1.5, 1, 1])
-with cols_hdr[0]: st.markdown("**نماد**")
-with cols_hdr[1]: st.markdown("**تاریخ**")
-with cols_hdr[2]: st.markdown("**جریان پول**\n(۰-۳۰)")
-with cols_hdr[3]: st.markdown("**حجم**\n(۰-۱۵)")
-with cols_hdr[4]: st.markdown("**قدرت خریدار**\n(۰-۲۰)")
-with cols_hdr[5]: st.markdown("**واکنش قیمت**\n(۰-۲۵)")
-with cols_hdr[6]: st.markdown("**تداوم**\n(۰-۱۰)")
-with cols_hdr[7]: st.markdown("**کل**\n(۰-۱۰۰)")
-with cols_hdr[8]: st.markdown("**شدت**")
-with cols_hdr[9]: st.markdown("**R_c**")
-with cols_hdr[10]: st.markdown("**سیگنال**")
-with cols_hdr[11]: st.markdown("**📊 تاریخچه**")
+# CSS برای هدر ثابت (sticky header)
+st.markdown("""
+<style>
+    div[data-testid="stVerticalBlock"] > div:has(> div[data-testid="stHorizontalBlock"]) {
+        position: sticky;
+        top: 0;
+        z-index: 999;
+        background: white;
+        padding-bottom: 10px;
+    }
+</style>
+""", unsafe_allow_html=True)
+
+# هدر جدول - ثابت در بالا
+hdr_cols = st.columns([1.5, 1.5, 1, 1, 1, 1, 1, 1, 1.5, 1.5, 1, 1])
+with hdr_cols[0]: st.markdown("**نماد**")
+with hdr_cols[1]: st.markdown("**تاریخ**")
+with hdr_cols[2]: st.markdown("**جریان پول**\n(۰-۳۰)")
+with hdr_cols[3]: st.markdown("**حجم**\n(۰-۱۵)")
+with hdr_cols[4]: st.markdown("**قدرت خریدار**\n(۰-۲۰)")
+with hdr_cols[5]: st.markdown("**واکنش قیمت**\n(۰-۲۵)")
+with hdr_cols[6]: st.markdown("**تداوم**\n(۰-۱۰)")
+with hdr_cols[7]: st.markdown("**کل**\n(۰-۱۰۰)")
+with hdr_cols[8]: st.markdown("**شدت**")
+with hdr_cols[9]: st.markdown("**R_c**")
+with hdr_cols[10]: st.markdown("**سیگنال**")
+with hdr_cols[11]: st.markdown("**عملیات**")
 st.markdown("---")
 
-# ردیف‌های جدول
+# جمع‌آوری نام نمادهایی که تاریخچه دارند
+history_tabs = ["📊 خلاصه"]
+history_data_dict = {}
+
 for symbol in all_symbols:
-    # خواندن داده‌های داشبورد (سطر اول = داده تاریخی)
     dash_file = os.path.join(dashboard_dir, f"{symbol}_dashboard.xlsx")
     if not os.path.exists(dash_file):
         dash_file = f"{symbol}_dashboard.xlsx"
@@ -620,10 +635,7 @@ for symbol in all_symbols:
     with cols[7]:
         st.markdown(f"{hist_data['total_score']}" if hist_data else "—")
     with cols[8]:
-        if hist_data:
-            st.markdown(f"● {hist_data['intensity']}")
-        else:
-            st.markdown("—")
+        st.markdown(f"● {hist_data['intensity']}" if hist_data else "—")
     with cols[9]:
         if hist_data:
             rc = hist_data["rc"]
@@ -642,8 +654,10 @@ for symbol in all_symbols:
         else:
             st.markdown("—")
     with cols[11]:
-        if st.button("📊", key=f"history_{symbol}", help=f"داشبورد {symbol}"):
+        # دکمه 📊 برای باز کردن تاریخچه در تب جدید
+        if st.button("📊", key=f"history_{symbol}", help=f"تاریخچه {symbol}"):
             st.session_state["show_history"] = symbol
+            st.rerun()
     
     # ===== ردیف‌های زنده: هر بار آپدیت یک سطر جدید =====
     live_list_key = f"live_list_{symbol}"
@@ -689,6 +703,10 @@ for symbol in all_symbols:
                 st.rerun()
     
     st.markdown("")
+    
+    # ذخیره داده تاریخچه برای تب
+    if hist_data:
+        history_data_dict[symbol] = dash_file
 
 # ============================================================
 # دکمه بروزرسانی همه نمادها
@@ -716,7 +734,6 @@ if st.button("🔄 بروزرسانی لحظه‌ای همه نمادها", type
     st.success("✅ بروزرسانی همه نمادها انجام شد")
     st.rerun()
 
-# دکمه پاک کردن داده‌های زنده
 if st.button("🗑️ پاک کردن داده‌های لحظه‌ای"):
     for symbol in all_symbols:
         live_list_key = f"live_list_{symbol}"
@@ -725,63 +742,55 @@ if st.button("🗑️ پاک کردن داده‌های لحظه‌ای"):
     st.rerun()
 
 # ============================================================
-# نمایش داشبورد تاریخی
-# ============================================================
-if "show_history" in st.session_state and st.session_state["show_history"]:
-    symbol = st.session_state["show_history"]
-    st.markdown("---")
-    st.markdown(f"## 📊 داشبورد تاریخی {symbol}")
-    show_symbol_history(symbol)
-    if st.button("✖ بستن", key="close_history"):
-        st.session_state["show_history"] = None
-        st.rerun()
-
-# ============================================================
-# کارت‌های خلاصه
+# تب‌ها: خلاصه + تاریخچه هر نماد
 # ============================================================
 st.markdown("---")
-st.markdown("## 📈 خلاصه کلی")
 
-all_data = []
-for symbol in all_symbols:
-    live_list_key = f"live_list_{symbol}"
-    live_list = st.session_state.get(live_list_key, [])
+# ساخت لیست تب‌ها
+tab_names = ["📊 خلاصه"] + list(history_data_dict.keys())
+tabs = st.tabs(tab_names)
+
+# تب اول: خلاصه کلی
+with tabs[0]:
+    st.markdown("## 📈 خلاصه کلی")
     
-    if live_list:
-        all_data.append(live_list[-1])  # آخرین داده زنده
+    all_data = []
+    for symbol in all_symbols:
+        live_list_key = f"live_list_{symbol}"
+        live_list = st.session_state.get(live_list_key, [])
+        
+        if live_list:
+            all_data.append(live_list[-1])
+        else:
+            dash_file = os.path.join(dashboard_dir, f"{symbol}_dashboard.xlsx")
+            if not os.path.exists(dash_file):
+                dash_file = f"{symbol}_dashboard.xlsx"
+            if os.path.exists(dash_file):
+                data = read_latest_from_dashboard(dash_file)
+                if data:
+                    all_data.append(data)
+
+    total_symbols = len(all_data)
+    if total_symbols > 0:
+        total_score = sum(d["total_score"] for d in all_data)
+        avg_score = total_score / total_symbols
+        buy_signals = sum(1 for d in all_data if d["signal"] in ["خرید قوی", "خرید"])
+        sell_signals = sum(1 for d in all_data if d["signal"] in ["فروش", "هشدار"])
     else:
-        dash_file = os.path.join(dashboard_dir, f"{symbol}_dashboard.xlsx")
-        if not os.path.exists(dash_file):
-            dash_file = f"{symbol}_dashboard.xlsx"
-        if os.path.exists(dash_file):
-            data = read_latest_from_dashboard(dash_file)
-            if data:
-                all_data.append(data)
+        avg_score = 0
+        buy_signals = 0
+        sell_signals = 0
 
-total_symbols = len(all_data)
-if total_symbols > 0:
-    total_score = sum(d["total_score"] for d in all_data)
-    avg_score = total_score / total_symbols
-    buy_signals = sum(1 for d in all_data if d["signal"] in ["خرید قوی", "خرید"])
-    sell_signals = sum(1 for d in all_data if d["signal"] in ["فروش", "هشدار"])
-else:
-    avg_score = 0
-    buy_signals = 0
-    sell_signals = 0
+    col1, col2, col3, col4 = st.columns(4)
+    with col1: st.metric("تعداد نمادها", total_symbols)
+    with col2: st.metric("میانگین امتیاز", f"{avg_score:.1f}")
+    with col3: st.metric("سیگنال خرید", f"🟢 {buy_signals}")
+    with col4: st.metric("سیگنال فروش/هشدار", f"🔴 {sell_signals}")
 
-col1, col2, col3, col4 = st.columns(4)
-
-with col1:
-    st.metric("تعداد نمادها", total_symbols)
-
-with col2:
-    st.metric("میانگین امتیاز", f"{avg_score:.1f}")
-
-with col3:
-    st.metric("سیگنال خرید", f"🟢 {buy_signals}")
-
-with col4:
-    st.metric("سیگنال فروش/هشدار", f"🔴 {sell_signals}")
+# تب‌های بعدی: تاریخچه هر نماد
+for i, (symbol, dash_file) in enumerate(history_data_dict.items()):
+    with tabs[i + 1]:
+        show_symbol_history(symbol)
 
 # ============================================================
 # فوتر
